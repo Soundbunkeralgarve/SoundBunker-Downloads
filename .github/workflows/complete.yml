@@ -1,0 +1,39 @@
+# Builds the SB COMPLETE Windows setup from the products' published Windows installers (releases <product>-<version>).
+name: complete
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version of the product releases to bundle
+        required: true
+        default: "1.0.1"
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the product installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ inputs.version }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force stage | Out-Null
+          foreach ($p in 'armoury','nuclear','napalm','shrapnel','fallout','sentinel') {
+            gh release download "$p-$env:V" -R $env:GITHUB_REPOSITORY -p '*Windows*Setup.exe' -D stage
+            if ($LASTEXITCODE -ne 0) { throw "No Windows installer in release $p-$env:V" }
+          }
+          Get-ChildItem stage
+      - name: Build SB COMPLETE setup
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DStage=$PWD\stage" "/DAppVersion=${{ inputs.version }}" "/O$PWD\dist" installer\SB-COMPLETE.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SB-COMPLETE-Windows-x64-Setup
+          path: dist/*.exe
