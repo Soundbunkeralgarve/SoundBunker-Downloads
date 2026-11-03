@@ -33,6 +33,17 @@ jobs:
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
           & $iscc "/DStage=$PWD\stage" "/DAppVersion=${{ inputs.version }}" "/O$PWD\dist" installer\SB-COMPLETE.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+      - name: Test install (silent) and check every plug-in landed
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\*.exe | Select-Object -First 1
+          $p = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Setup exited with $($p.ExitCode)" }
+          $vst3 = Get-ChildItem "$env:CommonProgramFiles\VST3" -Recurse -Filter *.vst3 -Directory | Select-Object -ExpandProperty Name
+          $vst3 | Sort-Object
+          foreach ($n in 'NUCLEAR','SHRAPNEL','FALLOUT','SENTINEL') { if (-not ($vst3 -match $n)) { throw "$n.vst3 missing" } }
+          if (-not ($vst3 -match 'napalm')) { throw "NAPALM vst3 missing" }
+          if ($vst3.Count -lt 16) { throw "Only $($vst3.Count) VST3 plug-ins installed (expected 16: 11 Armoury effects + 5)" }
       - uses: actions/upload-artifact@v4
         with:
           name: SB-COMPLETE-Windows-x64-Setup
